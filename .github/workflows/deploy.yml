@@ -1,0 +1,61 @@
+name: Deploy Admin Console
+
+on:
+  push:
+    branches: ["prod"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE: ${{ github.sha }}
+      ADMIN_ROOT: /opt/routeguard/admin
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build (type-check + Vite, production settings from .env.production)
+        run: npm run build
+
+      - name: Upload release to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
+          source: "dist/*"
+          strip_components: 1
+          target: ${{ env.ADMIN_ROOT }}/releases/${{ env.RELEASE }}
+
+      - name: Switch to the new release
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
+          script: |
+            set -e
+            cd ${{ env.ADMIN_ROOT }}
+            test -f releases/${{ env.RELEASE }}/index.html
+            chmod -R a+rX releases/${{ env.RELEASE }}
+            # Atomic switch: Apache serves /opt/routeguard/admin/current
+            ln -sfn releases/${{ env.RELEASE }} current.tmp && mv -Tf current.tmp current
+            # Keep the 5 newest releases for rollback
+            ls -1dt releases/*/ | tail -n +6 | xargs -r rm -rf
+            echo "Admin console now serving release ${{ env.RELEASE }}"
