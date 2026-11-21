@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import {computed,ref,watch} from 'vue'
+import {computed,reactive,ref,watch} from 'vue'
 import {useRoute,useRouter} from 'vue-router'
-import {AlertTriangle,ArrowLeft,Clock,Globe2,Info,LoaderCircle,RefreshCw,Search} from 'lucide-vue-next'
-import {ApiError,ledgerApi,usersApi,type SiteActivity,type TimeLedgerEntry,type UserDetail,type UserRow} from './api'
+import {AlertTriangle,ArrowLeft,BadgeCheck,Clock,FlaskConical,Gift,Globe2,Info,LoaderCircle,Power,RefreshCw,Search,X} from 'lucide-vue-next'
+import {ApiError,billingApi,ledgerApi,usersApi,type Plan,type SiteActivity,type TimeLedgerEntry,type UserDetail,type UserRow} from './api'
 
 const emit=defineEmits<{unauthorized:[]}>()
 const route=useRoute(),router=useRouter()
@@ -26,7 +26,25 @@ const pages=computed(()=>Math.max(1,Math.ceil(count.value/50)))
 const setQuery=(patch:Record<string,string|number|undefined>)=>void router.replace({query:{...route.query,...patch}})
 let searchTimer:number|undefined
 watch(searchText,v=>{clearTimeout(searchTimer);searchTimer=window.setTimeout(()=>setQuery({search:v||undefined,page:undefined}),300)})
-const roles:Array<[string,string]>=[['','Everyone'],['customer','Customers'],['partner','Partners'],['admin','Admins']]
+const roles:Array<[string,string]>=[['','Everyone'],['customer','Customers'],['partner','Partners'],['admin','Admins'],['test','Test accounts']]
+
+// --- account actions: test accounts, deactivate / reactivate, free plans ---
+const notice=ref(''),busy=ref(false),plans=ref<Plan[]>([])
+async function loadPlans(){if(!plans.value.length){try{plans.value=(await billingApi.plans()).results.filter(p=>p.isActive)}catch(e){fail(e)}}}
+const planLabel=(p:Plan)=>`${p.name} · ${p.durationDays>=360?'yearly':'monthly'}`
+function randomPassword(){const c='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';const a=new Uint32Array(14);crypto.getRandomValues(a);return Array.from(a,n=>c[n%c.length]).join('')+'-1'}
+const testForm=reactive({open:false,email:'',password:'',firstName:'Test',lastName:'Reviewer',planCode:''})
+async function openTestForm(){await loadPlans();Object.assign(testForm,{open:true,email:'',password:randomPassword(),firstName:'Test',lastName:'Reviewer',planCode:plans.value.find(p=>p.code==='plus-yearly')?.code??plans.value[0]?.code??''})}
+async function submitTestAccount(){busy.value=true;error.value='';try{const u=await usersApi.createTestAccount({email:testForm.email.trim(),password:testForm.password,firstName:testForm.firstName,lastName:testForm.lastName,planCode:testForm.planCode});notice.value=`Test account ${u.email} created. Password: ${testForm.password} — copy it now; it isn't shown again.`;testForm.open=false;void router.push(`/users/${u.id}`)}catch(e){fail(e)}finally{busy.value=false}}
+async function toggleActive(){
+  const u=user.value;if(!u)return
+  if(u.isActive&&!confirm(`Deactivate ${u.email}? They are signed out everywhere and can't sign in or connect until reactivated.`))return
+  busy.value=true;error.value=''
+  try{const r=u.isActive?await usersApi.deactivate(u.id):await usersApi.reactivate(u.id);user.value={...u,isActive:r.isActive};notice.value=r.isActive?`${u.email} can sign in again.`:`${u.email} is deactivated.`}catch(e){fail(e)}finally{busy.value=false}
+}
+const grant=reactive({open:false,planCode:''})
+async function openGrant(){await loadPlans();Object.assign(grant,{open:true,planCode:user.value?.status.subscription?.planCode??plans.value[0]?.code??''})}
+async function submitGrant(){const u=user.value;if(!u)return;busy.value=true;error.value='';try{await usersApi.grantPlan(u.id,grant.planCode);grant.open=false;const id=u.id;user.value=null;await loadUser(id);notice.value='Plan granted free. If they already had a plan, it starts when the current one ends.'}catch(e){fail(e)}finally{busy.value=false}}
 const sorts:Array<[string,string]>=[['-lastSeenAt','Recently active'],['-usedTodaySeconds','Most time today'],['-dateJoined','Newest'],['email','Email A–Z']]
 async function loadList(){loading.value=true;error.value='';try{const r=await usersApi.list({...q.value,search:q.value.search||undefined,role:q.value.role||undefined});users.value=r.results;count.value=r.count}catch(e){fail(e)}finally{loading.value=false}}
 
@@ -51,6 +69,7 @@ defineExpose({reload})
 <template>
 <div class="page users">
   <div v-if="error" class="alert billing-alert"><AlertTriangle :size="17"/>{{error}}<button @click="error=''">×</button></div>
+  <div v-if="notice" class="alert billing-alert ok"><BadgeCheck :size="17"/>{{notice}}<button @click="notice=''">×</button></div>
 
   <!-- List -->
   <section v-if="!userId" class="panel table-panel">
@@ -59,9 +78,10 @@ defineExpose({reload})
       <div class="chips"><button v-for="[v,l] in roles" :key="v" :class="{active:q.role===v}" @click="setQuery({role:v||undefined,page:undefined})">{{l}}</button></div>
       <select class="sort" :value="q.ordering" @change="setQuery({ordering:($event.target as HTMLSelectElement).value,page:undefined})"><option v-for="[v,l] in sorts" :key="v" :value="v">{{l}}</option></select>
       <button class="icon" title="Refresh" @click="reload"><RefreshCw :class="{spin:loading}" :size="17"/></button>
+      <button class="primary add-test" @click="openTestForm"><FlaskConical :size="16"/>Add test account</button>
     </div>
     <div class="table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Plan</th><th>Time today</th><th>Sites (7 days)</th><th>Last active</th><th>Joined</th></tr></thead><tbody>
-      <tr v-for="u in users" :key="u.id" class="clickable" @click="router.push(`/users/${u.id}`)"><td><b>{{u.email}}</b><small>{{u.name||'—'}}<template v-if="!u.isActive"> · <span class="suspended">suspended</span></template></small></td><td><em :class="u.role">{{u.role.toUpperCase()}}</em><small v-if="u.partnerCode">via {{u.partnerCode}}</small></td><td><template v-if="u.activeUntil">Active<small>until {{date(u.activeUntil)}}</small></template><span v-else class="muted-cell">None</span></td><td>{{u.usedTodaySeconds?dur(u.usedTodaySeconds):'—'}}</td><td>{{u.sitesLast7Days||'—'}}</td><td>{{ago(u.lastSeenAt)}}</td><td>{{date(u.dateJoined)}}</td></tr>
+      <tr v-for="u in users" :key="u.id" class="clickable" @click="router.push(`/users/${u.id}`)"><td><b>{{u.email}}</b><small>{{u.name||'—'}}<template v-if="!u.isActive"> · <span class="suspended">suspended</span></template></small></td><td><em :class="u.role">{{u.role.toUpperCase()}}</em><em v-if="u.isTestAccount" class="test">TEST</em><small v-if="u.partnerCode">via {{u.partnerCode}}</small></td><td><template v-if="u.activeUntil">Active<small>until {{date(u.activeUntil)}}</small></template><span v-else class="muted-cell">None</span></td><td>{{u.usedTodaySeconds?dur(u.usedTodaySeconds):'—'}}</td><td>{{u.sitesLast7Days||'—'}}</td><td>{{ago(u.lastSeenAt)}}</td><td>{{date(u.dateJoined)}}</td></tr>
       <tr v-if="!users.length&&!loading"><td colspan="7" class="empty">No users match.</td></tr>
     </tbody></table></div>
     <footer class="pager"><span>{{count}} users</span><template v-if="pages>1"><button :disabled="q.page<=1" @click="setQuery({page:q.page-1>1?q.page-1:undefined})">Previous</button><span>Page {{q.page}} of {{pages}}</span><button :disabled="q.page>=pages" @click="setQuery({page:q.page+1})">Next</button></template></footer>
@@ -74,7 +94,11 @@ defineExpose({reload})
     <template v-else>
       <section class="panel profile">
         <div class="avatar">{{(user.email||'?')[0].toUpperCase()}}</div>
-        <div class="who"><h2>{{user.email}}</h2><p>{{user.name||'No name'}} · <em :class="user.role">{{user.role.toUpperCase()}}</em><span v-if="!user.isActive" class="suspended"> · suspended</span></p></div>
+        <div class="who"><h2>{{user.email}}</h2><p>{{user.name||'No name'}} · <em :class="user.role">{{user.role.toUpperCase()}}</em><em v-if="user.isTestAccount" class="test">TEST</em><span v-if="!user.isActive" class="suspended"> · deactivated</span></p></div>
+        <div v-if="user.role!=='admin'" class="user-actions">
+          <button v-if="user.role==='customer'" class="row-action edit" :disabled="busy" @click="openGrant"><Gift :size="13"/>Grant plan</button>
+          <button class="row-action" :class="user.isActive?'danger':'edit'" :disabled="busy" @click="toggleActive"><Power :size="13"/>{{user.isActive?'Deactivate':'Reactivate'}}</button>
+        </div>
         <dl>
           <div><dt>Plan</dt><dd>{{user.status.subscription?.planName||'None'}}</dd><small v-if="user.status.subscription">until {{date(user.status.subscription.expiresAt)}}</small></div>
           <div><dt>Time today</dt><dd>{{dur(user.status.today.usedSeconds)}}</dd><small>of {{dur(user.status.today.allowanceSeconds)}}</small></div>
@@ -116,5 +140,29 @@ defineExpose({reload})
       </section>
     </template>
   </template>
+
+  <!-- Add test account -->
+  <div v-if="testForm.open" class="modal-wrap" @click.self="testForm.open=false">
+    <form class="modal" @submit.prevent="submitTestAccount">
+      <header><p><small>TEST ACCOUNT</small><strong>Add a test account</strong><span>Signs in straight away (no email code) with a plan granted free. Use it for app-store reviewers or your own checks.</span></p><button type="button" @click="testForm.open=false"><X :size="18"/></button></header>
+      <div class="form-grid">
+        <label class="full">Email<input v-model="testForm.email" type="email" required placeholder="reviewer@finances.tools"></label>
+        <label class="full">Password<div class="pw-row"><input v-model="testForm.password" required minlength="8" autocomplete="off" spellcheck="false"><button type="button" class="row-action" @click="testForm.password=randomPassword()">Generate</button></div><small class="hint-small">Shown once after creating — copy it for the reviewer notes.</small></label>
+        <label>First name<input v-model="testForm.firstName" maxlength="150"></label>
+        <label>Last name<input v-model="testForm.lastName" maxlength="150"></label>
+        <label class="full">Plan<select v-model="testForm.planCode"><option value="">No plan</option><option v-for="p in plans" :key="p.code" :value="p.code">{{planLabel(p)}}</option></select></label>
+      </div>
+      <footer><button type="button" @click="testForm.open=false">Cancel</button><button class="primary" :disabled="busy"><LoaderCircle v-if="busy" class="spin" :size="16"/>Create test account</button></footer>
+    </form>
+  </div>
+
+  <!-- Grant plan -->
+  <div v-if="grant.open && user" class="modal-wrap" @click.self="grant.open=false">
+    <form class="modal" @submit.prevent="submitGrant">
+      <header><p><small>FREE PLAN</small><strong>Grant a plan</strong><span>{{user.email}} · no payment and nothing booked. If they already have a plan, this one starts when it ends.</span></p><button type="button" @click="grant.open=false"><X :size="18"/></button></header>
+      <div class="form-grid"><label class="full">Plan<select v-model="grant.planCode" required><option v-for="p in plans" :key="p.code" :value="p.code">{{planLabel(p)}}</option></select></label></div>
+      <footer><button type="button" @click="grant.open=false">Cancel</button><button class="primary" :disabled="busy||!grant.planCode"><LoaderCircle v-if="busy" class="spin" :size="16"/>Grant plan</button></footer>
+    </form>
+  </div>
 </div>
 </template>

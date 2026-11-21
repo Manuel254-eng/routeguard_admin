@@ -41,3 +41,7 @@ tr.lines>td{background:#fafbfa;padding:4px 16px 12px}tr.lines table{background:#
 .code-note{display:flex;gap:10px;align-items:flex-start;background:#eef6ff;border:1px solid #cfe0f8;color:#24446e;border-radius:10px;padding:11px 13px;font-size:12px;line-height:1.5;margin:14px 0 4px}.code-note.warn{background:#fff7ed;border-color:#fed7aa;color:#8a4b12}.code-note svg{flex:none;margin-top:1px}.code-note p{margin:0}
 .password-gate .code-input{text-align:center;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:22px;letter-spacing:.4em}
 .code-resend{display:block;margin:-8px 0 6px auto;border:0;background:none;color:#147d55;font-size:12px;font-weight:700;padding:0}.code-resend:disabled{color:#9aa49f;cursor:default}
+.users-tools .add-test{padding:8px 13px;font-size:12px}td em.test,.profile em.test{background:#fdf4e3;color:#a2660f;margin-left:5px;font-style:normal;padding:3px 7px;border-radius:5px;font-size:9px;font-weight:800}
+.user-actions{grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end;margin-top:-4px}.profile{position:relative}
+.users .modal label{display:grid;gap:7px;font-size:13px;font-weight:700;margin-bottom:14px}.users .modal input,.users .modal select{width:100%;border:1px solid #d9e1dd;border-radius:10px;padding:11px 12px;outline:none;background:#fff}.users .modal input:focus,.users .modal select:focus{border-color:#29a774}
+.pw-row{display:flex;gap:8px}.pw-row input{font-family:ui-monospace,Menlo,Consolas,monospace}.hint-small{font-weight:500;color:#748079;font-size:11px}

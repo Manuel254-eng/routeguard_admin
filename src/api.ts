@@ -39,7 +39,7 @@ export const billingApi={
 }
 
 // --- users & activity ---------------------------------------------------------------------------
-export interface UserRow{id:number;email:string;name:string;isActive:boolean;role:'admin'|'partner'|'customer';partnerCode:string|null;dateJoined:string;lastLogin:string|null;activeUntil:string|null;usedTodaySeconds:number;lastSeenAt:string|null;sitesLast7Days:number}
+export interface UserRow{id:number;email:string;name:string;isActive:boolean;role:'admin'|'partner'|'customer';partnerCode:string|null;dateJoined:string;lastLogin:string|null;activeUntil:string|null;usedTodaySeconds:number;lastSeenAt:string|null;sitesLast7Days:number;isTestAccount:boolean}
 export interface UserDetail extends UserRow, CustomerBilling{partner:{code:string;name:string}|null}
 export interface SiteRow{site:string;activeSeconds:number;connections:number;bytes:number;firstSeenAt:string;lastSeenAt:string;days:number}
 export interface SiteActivity{from:string;to:string;retentionDays:number;totals:{sites:number;connections:number;bytes:number;activeSeconds:number};days:Array<{date:string;activeSeconds:number;bytes:number;sites:number}>;sites:SiteRow[]}
@@ -47,6 +47,10 @@ export const usersApi={
   list:(params:{search?:string;role?:string;active?:string;ordering?:string;page?:number}={})=>req<Page<UserRow>>(`/admin/users/${qs(params)}`),
   get:(id:number)=>req<UserDetail>(`/admin/users/${id}/`),
   sites:(id:number,params:{days?:number;date?:string})=>req<SiteActivity>(`/admin/users/${id}/sites/${qs(params)}`),
+  createTestAccount:(body:{email:string;password:string;firstName?:string;lastName?:string;planCode?:string})=>post<UserRow>('/admin/users/test-accounts/',body),
+  deactivate:(id:number)=>post<UserRow>(`/admin/users/${id}/deactivate/`),
+  reactivate:(id:number)=>post<UserRow>(`/admin/users/${id}/reactivate/`),
+  grantPlan:(id:number,planCode:string,note='')=>post<UserRow>(`/admin/users/${id}/grant-plan/`,{planCode,note}),
 }
 
 // --- ledger -----------------------------------------------------------------------------------
